@@ -1,0 +1,24 @@
+<dictionary>
+	<language type="en">
+		<words>
+			<word id="1">to work</word>
+			<word id="2">to eat</word>
+			<word id="3">to listen</word>
+			<word id="4">to talk</word>
+			<word id="5">to send</word>
+			<word id="6">house</word>
+			<word id="7">room</word>
+		</words>
+	</language>
+	<language type="de">
+		<words>
+			<word id="1">arbeiten</word>
+			<word id="2">essen</word>
+			<word id="3">hören</word>
+			<word id="4">reden</word>
+			<word id="5">senden</word>
+			<word id="6">Haus</word>
+			<word id="7">Zimmer</word>
+		</words>
+	</language>
+</dictionary>
