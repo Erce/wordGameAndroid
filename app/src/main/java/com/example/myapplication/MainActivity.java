@@ -2,9 +2,12 @@ package com.example.myapplication;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentValues;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.CountDownTimer;
@@ -33,12 +36,17 @@ import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.sql.ResultSet;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -47,32 +55,110 @@ import static android.provider.AlarmClock.EXTRA_MESSAGE;
 
 public class MainActivity extends Activity {
     ArrayList arrList = new ArrayList();
-    TextView tv1,tv2,tv3,tv4,tv5;
+    TextView tv1, word1, word2, word3, word4;
     private long mLastClickTime = 0;
     private String chosenWordEnglish = "", chosenWordGerman = "";
     private int randomNumberForLanguage;
     public static final String EXTRA_MESSAGE = "com.example.myfirstapp.MESSAGE";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         try {
-            if(isConnected()) {
+            if (!isConnected()) {
                 try {
+                    SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy");
+                    Date currentDate = new Date();
+                    String currentDateStr = sdf.format(currentDate);
                     arrList = new GetJSON().execute("http://ercecanbalcioglu.com/dictionaryDatabaseFill/androidWebService.php").get();
+                    SQLiteDatabase db = openOrCreateDatabase("dictionary", MODE_PRIVATE, null);
+                    //String SQL_DELETE_DATE =
+                    //       "DROP TABLE IF EXISTS " + "date";
+                    String SQL_CREATE_DATE =
+                            "CREATE TABLE IF NOT EXISTS " + "date" + " (" +
+                                    "id" + " INTEGER PRIMARY KEY," +
+                                    "Date" + " TEXT)";
+                    //db.execSQL(SQL_DELETE_DATE);
+                    db.execSQL(SQL_CREATE_DATE);
+
+                    Cursor cursor = db.rawQuery("SELECT * FROM date " +
+                            "WHERE id = (SELECT MAX(id) FROM date);", null);
+                    cursor.moveToFirst();
+                    long diffDays = 0;
+                    String dateFromLocalDb;
+                    boolean flag = false;
+                    if (cursor.getCount() != 0) {
+                        dateFromLocalDb = cursor.getString(1);
+                        cursor.close();
+                        diffDays = getDifferenceDays(sdf.parse(dateFromLocalDb), sdf.parse(currentDateStr));
+                        flag = true;
+                    }
+
+                    if (!flag || (flag && diffDays > 7)) {
+                        int listLength = arrList.size();
+                        String SQL_DELETE_ENTRIES =
+                                "DROP TABLE IF EXISTS " + "dictionary";
+                        String SQL_CREATE_ENTRIES =
+                                "CREATE TABLE " + "dictionary" + " (" +
+                                        "id" + " INTEGER PRIMARY KEY," +
+                                        "German" + " TEXT," +
+                                        "English" + " TEXT)";
+
+                        db.execSQL(SQL_DELETE_ENTRIES);
+                        db.execSQL(SQL_CREATE_ENTRIES);
+                        ContentValues value = new ContentValues();
+                        value.put("Date", currentDateStr);
+                        db.insert("date", null, value);
+
+                        for (int i = 0; i < listLength; i++) {
+                            final HashMap<String, String> map = (HashMap<String, String>) arrList.get(i);
+                            ContentValues values = new ContentValues();
+                            values.put("German", map.get("German"));
+                            values.put("English", map.get("English"));
+                            long newRowId = db.insert("dictionary", null, values);
+                            //db.execSQL("INSERT INTO dictionary VALUES("+map.get("German")+", "+map.get("English")+");");
+                        }
+                    }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
                     e.printStackTrace();
+                } catch (ParseException e) {
+                    e.printStackTrace();
                 }
 
-                randomWord(findViewById(R.id.button2));
-            }else {
+                //randomWord(findViewById(R.id.button2));
+                engine(findViewById(R.id.button2));
+            } else if (true) {
                 AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
 
-                alertDialog.setMessage("Network Error");
-                alertDialog.setButton("OK", new OnClickListener(){
-                    public void onClick(DialogInterface dialog, int which){
+                alertDialog.setMessage("Network Error. Local database will be used");
+                alertDialog.setButton("OK", new OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        SQLiteDatabase db = openOrCreateDatabase("dictionary", MODE_PRIVATE, null);
+                        Cursor cursor = db.rawQuery("SELECT * FROM dictionary", null);
+                        if (cursor.moveToFirst()) {
+                            ArrayList arrListTemp = new ArrayList();
+                            for (int i = 0; i < cursor.getCount(); i++) {
+                                HashMap<String, HashMap<String, String>> node = new HashMap<>();
+                                HashMap<String, String> nodeChild = new HashMap<>();
+                                nodeChild.put("German", cursor.getString(1));
+                                nodeChild.put("English", cursor.getString(2));
+                                nodeChild.put("id", cursor.getString(0));
+                                nodeChild.put("Turkish", "");
+                                arrListTemp.add(nodeChild);
+                                cursor.moveToNext();
+                            }
+                            cursor.close();
+                            try {
+                                arrList = arrListTemp;
+                                System.out.println("aa");
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                        engine(findViewById(R.id.button2));
                     }
                 });
                 alertDialog.show();
@@ -82,77 +168,24 @@ public class MainActivity extends Activity {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        /*tv1 = (TextView) findViewById(R.id.textView1);
-        tv1.setMovementMethod(new ScrollingMovementMethod());
-        try {
-            InputStream is = getAssets().open("dictionary.xml");
-
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            Document doc = dBuilder.parse(is);
-
-            Element element = doc.getDocumentElement();
-            element.normalize();
-
-            NodeList nList = doc.getElementsByTagName("word");
-            int nListLength = nList.getLength();
-            Random r = new Random();
-            int randomNumber = r.nextInt(nListLength - 0) + 0;
-            //for (int i = 0; i < nList.getLength(); i++) {
-            Node actualNode = nList.item(randomNumber);
-
-            int[] intArr = new int[4];
-            for(int j=0; j < 3; j++) {
-                int randomWordNumber = r.nextInt(nListLength);
-                while (randomNumber == randomWordNumber) {
-                    randomWordNumber = r.nextInt(nListLength);
-                }
-                intArr[j] = randomWordNumber;
-            }
-            intArr[3] = randomNumber;
-
-            int intArrayRandomNumber1 = r.nextInt(4);
-            Element randomElement1 = (Element)nList.item(intArr[intArrayRandomNumber1]);
-            int intArrayRandomNumber2 = r.nextInt(4);
-            while (intArrayRandomNumber1 == intArrayRandomNumber2) {
-                intArrayRandomNumber2 = r.nextInt(4);
-            }
-            Element randomElement2 = (Element)nList.item(intArr[intArrayRandomNumber2]);
-            int intArrayRandomNumber3 = r.nextInt(4);
-            while (intArrayRandomNumber1 == intArrayRandomNumber2 || intArrayRandomNumber2 == intArrayRandomNumber3) {
-                intArrayRandomNumber3 = r.nextInt(4);
-            }
-            Element randomElement3 = (Element)nList.item(intArr[intArrayRandomNumber3]);
-            int intArrayRandomNumber4 = r.nextInt(4);
-            while (intArrayRandomNumber1 == intArrayRandomNumber4 || intArrayRandomNumber2 == intArrayRandomNumber4 || intArrayRandomNumber3 == intArrayRandomNumber4) {
-                intArrayRandomNumber4 = r.nextInt(4);
-            }
-            Element randomElement4 = (Element)nList.item(intArr[intArrayRandomNumber4]);
-
-            if (actualNode.getNodeType() == Node.ELEMENT_NODE) {
-                Element element2 = (Element) actualNode;
-                tv1.setText(tv1.getText() + "\n" + getValue("english", element2) + "\n");
-                tv1.setText(tv1.getText() + "-----------------------\n");
-                tv1.setText(tv1.getText() + "" + getValue("german", randomElement1) + "\n");
-                tv1.setText(tv1.getText() + "" + getValue("german", randomElement2) + "\n");
-                tv1.setText(tv1.getText() + "" + getValue("german", randomElement3) + "\n");
-                tv1.setText(tv1.getText() + "" + getValue("german", randomElement4) + "\n");
-                tv1.setText(tv1.getText() + "-----------------------");
-            }
-            //}
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }*/
     }
 
-    /** Checks if there is internet connection */
+    public static long getDifferenceDays(Date d1, Date d2) {
+        long diff = d2.getTime() - d1.getTime();
+        return TimeUnit.DAYS.convert(diff, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Checks if there is internet connection
+     */
     public boolean isConnected() throws InterruptedException, IOException {
         String command = "ping -c 1 google.com";
-        return (Runtime.getRuntime().exec (command).waitFor() == 0);
+        return (Runtime.getRuntime().exec(command).waitFor() == 0);
     }
 
-    /** Called when the user taps the Send button */
+    /**
+     * Called when the user taps the Send button
+     */
     public void sendMessage(View view) {
         Intent intent = new Intent(this, XmlRead.class);
         /*Intent intent = new Intent(this, DisplayMessageActivity.class);
@@ -170,153 +203,102 @@ public class MainActivity extends Activity {
         startActivity(intent);
     }
 
-    /** Display XML on new activity */
+    public void updateLocalDatabase(View view) {
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy");
+            Date currentDate = new Date();
+            String currentDateStr = sdf.format(currentDate);
+            arrList = new GetJSON().execute("http://ercecanbalcioglu.com/dictionaryDatabaseFill/androidWebService.php").get();
+            SQLiteDatabase db = openOrCreateDatabase("dictionary", MODE_PRIVATE, null);
+            String SQL_CREATE_DATE =
+                    "CREATE TABLE IF NOT EXISTS " + "date" + " (" +
+                            "id" + " INTEGER PRIMARY KEY," +
+                            "Date" + " TEXT)";
+            db.execSQL(SQL_CREATE_DATE);
+
+            int listLength = arrList.size();
+            String SQL_DELETE_ENTRIES =
+                    "DROP TABLE IF EXISTS " + "dictionary";
+            String SQL_CREATE_ENTRIES =
+                    "CREATE TABLE " + "dictionary" + " (" +
+                            "id" + " INTEGER PRIMARY KEY," +
+                            "German" + " TEXT," +
+                            "English" + " TEXT)";
+
+            db.execSQL(SQL_DELETE_ENTRIES);
+            db.execSQL(SQL_CREATE_ENTRIES);
+            ContentValues value = new ContentValues();
+            value.put("Date", currentDateStr);
+            db.insert("date", null, value);
+
+            for (int i = 0; i < listLength; i++) {
+                final HashMap<String, String> map = (HashMap<String, String>) arrList.get(i);
+                ContentValues values = new ContentValues();
+                values.put("German", map.get("German"));
+                values.put("English", map.get("English"));
+                db.insert("dictionary", null, values);
+            }
+
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Display XML on new activity
+     */
     public void displayXml(View view) {
         Intent intent = new Intent(this, DisplayXml.class);
         intent.putExtra("JSON_DATA", arrList);
         startActivity(intent);
     }
 
-    public void showMySQLData(View view) {
-
-    }
-
-    public void randomWord(final View view) {
+    /**
+     * Engine to create buttons, listeners and logic
+     */
+    public void engine(final View view) {
         view.getRootView().setBackgroundColor(Color.WHITE);
-        final Timer timer = new Timer();
-        tv1 = (TextView) findViewById(R.id.textView1);
+        tv1 = findViewById(R.id.textView1);
         tv1.setText("");
-        tv2 = (TextView) findViewById(R.id.textView2);
-        tv2.setText("");
-        tv3 = (TextView) findViewById(R.id.textView3);
-        tv3.setText("");
-        tv4 = (TextView) findViewById(R.id.textView4);
-        tv4.setText("");
-        tv5 = (TextView) findViewById(R.id.textView5);
-        tv5.setText("");
+        word1 = findViewById(R.id.textView2);
+        word1.setText("");
+        word2 = findViewById(R.id.textView3);
+        word2.setText("");
+        word3 = findViewById(R.id.textView4);
+        word3.setText("");
+        word4 = findViewById(R.id.textView5);
+        word4.setText("");
+        final TextView textViewArr[] = {word1, word2, word3, word4};
+        tv1.setTextColor(Color.DKGRAY);
+        for (int i = 0; i < textViewArr.length; i++) {
+            textViewArr[i].setTextColor(Color.DKGRAY);
+        }
+
         try {
-            InputStream is = getAssets().open("dictionary.xml");
-
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            Document doc = dBuilder.parse(is);
-
-            Element element = doc.getDocumentElement();
-            element.normalize();
-
-            NodeList nList = doc.getElementsByTagName("word");
-            int nListLength = nList.getLength();
-            Random r = new Random();
-            final int randomNumber = r.nextInt(nListLength - 0) + 0;
-            //for (int i = 0; i < nList.getLength(); i++) {
-            final Node actualNode = nList.item(randomNumber);
-
-            //----------------------------
-            int listLength = arrList.size();
-            final int randomIndex = r.nextInt(listLength - 0) + 0;
-            final HashMap<String,String> actualMap = (HashMap<String,String>)arrList.get(randomIndex);
-
-            //----------------------------
-
-            int[] intArr = {-1,-1,-1,-1};
-            for(int j=0; j < 3; j++) {
-                int randomWordNumber = r.nextInt(nListLength);
-                while (randomIndex == randomWordNumber || intArr[0] == randomWordNumber || intArr[1] == randomWordNumber || intArr[2] == randomWordNumber) {
-                    randomWordNumber = r.nextInt(nListLength);
-                }
-                intArr[j] = randomWordNumber;
-            }
-            intArr[3] = randomIndex;
-
-            int intArrayRandomNumber1 = r.nextInt(4);
-            Element randomElement1 = (Element)nList.item(intArr[intArrayRandomNumber1]);
-            HashMap<String,String> randomMap1 = (HashMap<String,String>)arrList.get(intArr[intArrayRandomNumber1]);
-            int intArrayRandomNumber2 = r.nextInt(4);
-            while (intArrayRandomNumber1 == intArrayRandomNumber2) {
-                intArrayRandomNumber2 = r.nextInt(4);
-            }
-            Element randomElement2 = (Element)nList.item(intArr[intArrayRandomNumber2]);
-            HashMap<String,String> randomMap2 = (HashMap<String,String>)arrList.get(intArr[intArrayRandomNumber2]);
-            int intArrayRandomNumber3 = r.nextInt(4);
-            while (intArrayRandomNumber1 == intArrayRandomNumber3 || intArrayRandomNumber2 == intArrayRandomNumber3) {
-                intArrayRandomNumber3 = r.nextInt(4);
-            }
-            Element randomElement3 = (Element)nList.item(intArr[intArrayRandomNumber3]);
-            HashMap<String,String> randomMap3 = (HashMap<String,String>)arrList.get(intArr[intArrayRandomNumber3]);
-            int intArrayRandomNumber4 = r.nextInt(4);
-            while (intArrayRandomNumber1 == intArrayRandomNumber4 || intArrayRandomNumber2 == intArrayRandomNumber4 || intArrayRandomNumber3 == intArrayRandomNumber4) {
-                intArrayRandomNumber4 = r.nextInt(4);
-            }
-            Element randomElement4 = (Element)nList.item(intArr[intArrayRandomNumber4]);
-            HashMap<String,String> randomMap4 = (HashMap<String,String>)arrList.get(intArr[intArrayRandomNumber4]);
-
-            randomNumberForLanguage = r.nextInt(2); // 0 for english 1 for german
-            if (actualNode.getNodeType() == Node.ELEMENT_NODE && randomNumberForLanguage == 0) {
-                /*Element element2 = (Element) actualNode;
-                chosenWordEnglish = getValue("english", element2);
-                chosenWordGerman = getValue("german", element2);
-                tv1.setText(getValue("english", element2) + "\n");
-                tv2.setText(getValue("german", randomElement1));
-                tv3.setText(getValue("german", randomElement2));
-                tv4.setText(getValue("german", randomElement3));
-                tv5.setText(getValue("german", randomElement4));*/
-
-                //----------------------------------
-                chosenWordEnglish = actualMap.get("English");
-                chosenWordGerman = actualMap.get("German");
-                tv1.setText(chosenWordEnglish);
-                tv2.setText(randomMap1.get("German"));
-                tv3.setText(randomMap2.get("German"));
-                tv4.setText(randomMap3.get("German"));
-                tv5.setText(randomMap4.get("German"));
-                //----------------------------------
-            }
-            else if(actualNode.getNodeType() == Node.ELEMENT_NODE && randomNumberForLanguage == 1) {
-                /*Element element2 = (Element) actualNode;
-                chosenWordGerman = getValue("german", element2);
-                chosenWordEnglish = getValue("english", element2);
-                tv1.setText(getValue("german", element2) + "\n");
-                tv2.setText(getValue("english", randomElement1));
-                tv3.setText(getValue("english", randomElement2));
-                tv4.setText(getValue("english", randomElement3));
-                tv5.setText(getValue("english", randomElement4));*/
-
-                //----------------------------------
-                chosenWordEnglish = actualMap.get("English");
-                chosenWordGerman = actualMap.get("German");
-                tv1.setText(chosenWordGerman);
-                tv2.setText(randomMap1.get("English"));
-                tv3.setText(randomMap2.get("English"));
-                tv4.setText(randomMap3.get("English"));
-                tv5.setText(randomMap4.get("English"));
-                //----------------------------------
-            }
-
-
-
-            //}
+            //Initialize first words
+            randomWord(findViewById(R.id.button2));
 
             tv1.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
                     alertDialog.setTitle("Meaning");
-                    if(randomNumberForLanguage == 0) {
+                    if (randomNumberForLanguage == 0) {
                         alertDialog.setMessage(chosenWordGerman);
-                    }
-                    else if(randomNumberForLanguage == 1) {
+                    } else if (randomNumberForLanguage == 1) {
                         alertDialog.setMessage(chosenWordEnglish);
                     }
-                    alertDialog.setButton("OK", new OnClickListener(){
-                        public void onClick(DialogInterface dialog, int which){
+                    alertDialog.setButton("OK", new OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
                         }
                     });
-                    //alertDialog.setIcon(R.drawable.icon);
                     alertDialog.show();
                 }
             });
 
-            tv2.setOnClickListener(new View.OnClickListener() {
+            word1.setOnClickListener(new View.OnClickListener() {
 
                 @Override
                 public void onClick(View v) {
@@ -324,13 +306,14 @@ public class MainActivity extends Activity {
                         return;
                     }
                     mLastClickTime = SystemClock.elapsedRealtime();
-                    if (tv2.getText().equals(chosenWordEnglish) || tv2.getText().equals(chosenWordGerman)) {
+                    if (word1.getText().equals(chosenWordEnglish) || word1.getText().equals(chosenWordGerman)) {
                         view.getRootView().setBackgroundColor(Color.argb(255, 153, 255, 51));
                     } else {
                         view.getRootView().setBackgroundColor(Color.argb(255, 255, 40, 40));
+                        showTheRightChoice(textViewArr, chosenWordGerman, chosenWordEnglish);
                     }
 
-                    new CountDownTimer(1500, 1000) {
+                    new CountDownTimer(1000, 1000) {
 
                         public void onTick(long millisUntilFinished) {
 
@@ -344,21 +327,21 @@ public class MainActivity extends Activity {
                 }
             });
 
-            tv3.setOnClickListener(new View.OnClickListener() {
+            word2.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     if (SystemClock.elapsedRealtime() - mLastClickTime < 1500) {
                         return;
                     }
                     mLastClickTime = SystemClock.elapsedRealtime();
-                    if(tv3.getText().equals(chosenWordEnglish) || tv3.getText().equals(chosenWordGerman)) {
+                    if (word2.getText().equals(chosenWordEnglish) || word2.getText().equals(chosenWordGerman)) {
                         view.getRootView().setBackgroundColor(Color.argb(255, 153, 255, 51));
-                    }
-                    else {
+                    } else {
                         view.getRootView().setBackgroundColor(Color.argb(255, 255, 40, 40));
+                        showTheRightChoice(textViewArr, chosenWordGerman, chosenWordEnglish);
                     }
 
-                    new CountDownTimer(1500, 1000) {
+                    new CountDownTimer(1000, 1000) {
 
                         public void onTick(long millisUntilFinished) {
 
@@ -371,21 +354,21 @@ public class MainActivity extends Activity {
                 }
             });
 
-            tv4.setOnClickListener(new View.OnClickListener() {
+            word3.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     if (SystemClock.elapsedRealtime() - mLastClickTime < 1500) {
                         return;
                     }
                     mLastClickTime = SystemClock.elapsedRealtime();
-                    if(tv4.getText().equals(chosenWordEnglish) || tv4.getText().equals(chosenWordGerman)) {
+                    if (word3.getText().equals(chosenWordEnglish) || word3.getText().equals(chosenWordGerman)) {
                         view.getRootView().setBackgroundColor(Color.argb(255, 153, 255, 51));
-                    }
-                    else {
+                    } else {
                         view.getRootView().setBackgroundColor(Color.argb(255, 255, 40, 40));
+                        showTheRightChoice(textViewArr, chosenWordGerman, chosenWordEnglish);
                     }
 
-                    new CountDownTimer(1500, 1000) {
+                    new CountDownTimer(1000, 1000) {
 
                         public void onTick(long millisUntilFinished) {
 
@@ -398,28 +381,27 @@ public class MainActivity extends Activity {
                 }
             });
 
-            tv5.setOnClickListener(new View.OnClickListener() {
+            word4.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     if (SystemClock.elapsedRealtime() - mLastClickTime < 1500) {
                         return;
                     }
                     mLastClickTime = SystemClock.elapsedRealtime();
-                    if(tv5.getText().equals(chosenWordEnglish) || tv5.getText().equals(chosenWordGerman)) {
+                    if (word4.getText().equals(chosenWordEnglish) || word4.getText().equals(chosenWordGerman)) {
                         view.getRootView().setBackgroundColor(Color.argb(255, 153, 255, 51));
-                    }
-                    else {
+                    } else {
                         view.getRootView().setBackgroundColor(Color.argb(255, 255, 40, 40));
+                        showTheRightChoice(textViewArr, chosenWordGerman, chosenWordEnglish);
                     }
 
-                    new CountDownTimer(1500, 1000) {
+                    new CountDownTimer(1000, 1000) {
 
                         public void onTick(long millisUntilFinished) {
 
                         }
 
                         public void onFinish() {
-
                             randomWord(view);
                         }
                     }.start();
@@ -431,9 +413,95 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static String getValue(String tag, Element element) {
-        NodeList nodeList = element.getElementsByTagName(tag).item(0).getChildNodes();
-        Node node = nodeList.item(0);
-        return node.getNodeValue();
+    public void randomWord(final View view) {
+        view.getRootView().setBackgroundColor(Color.WHITE);
+        tv1 = findViewById(R.id.textView1);
+        tv1.setText("");
+        word1 = findViewById(R.id.textView2);
+        word1.setText("");
+        word2 = findViewById(R.id.textView3);
+        word2.setText("");
+        word3 = findViewById(R.id.textView4);
+        word3.setText("");
+        word4 = findViewById(R.id.textView5);
+        word4.setText("");
+        final TextView textViewArr[] = {word1, word2, word3, word4};
+        tv1.setTextColor(Color.DKGRAY);
+        for (int i = 0; i < textViewArr.length; i++) {
+            textViewArr[i].setTextColor(Color.DKGRAY);
+        }
+
+        try {
+            Random random = new Random();
+            //getting word json from service(actual working right now)
+            //----------------------------
+            int listLength = arrList.size();
+            final int randomIndex = random.nextInt(listLength - 0) + 0;
+            final HashMap<String, String> actualMap = (HashMap<String, String>) arrList.get(randomIndex);
+            //----------------------------
+
+            //setting the actual word with 3 different words
+            int[] intArr = {-1, -1, -1, -1};
+            for (int j = 0; j < 3; j++) {
+                int randomWordNumber = random.nextInt(listLength);
+                while (randomIndex == randomWordNumber || intArr[0] == randomWordNumber || intArr[1] == randomWordNumber || intArr[2] == randomWordNumber) {
+                    randomWordNumber = random.nextInt(listLength);
+                }
+                intArr[j] = randomWordNumber;
+            }
+            intArr[3] = randomIndex;
+
+            //random orders for the words
+            int intArrayRandomNumber1 = random.nextInt(4);
+            HashMap<String, String> randomMap1 = (HashMap<String, String>) arrList.get(intArr[intArrayRandomNumber1]);
+            int intArrayRandomNumber2 = random.nextInt(4);
+            while (intArrayRandomNumber1 == intArrayRandomNumber2) {
+                intArrayRandomNumber2 = random.nextInt(4);
+            }
+            HashMap<String, String> randomMap2 = (HashMap<String, String>) arrList.get(intArr[intArrayRandomNumber2]);
+            int intArrayRandomNumber3 = random.nextInt(4);
+            while (intArrayRandomNumber1 == intArrayRandomNumber3 || intArrayRandomNumber2 == intArrayRandomNumber3) {
+                intArrayRandomNumber3 = random.nextInt(4);
+            }
+            HashMap<String, String> randomMap3 = (HashMap<String, String>) arrList.get(intArr[intArrayRandomNumber3]);
+            int intArrayRandomNumber4 = random.nextInt(4);
+            while (intArrayRandomNumber1 == intArrayRandomNumber4 || intArrayRandomNumber2 == intArrayRandomNumber4 || intArrayRandomNumber3 == intArrayRandomNumber4) {
+                intArrayRandomNumber4 = random.nextInt(4);
+            }
+            HashMap<String, String> randomMap4 = (HashMap<String, String>) arrList.get(intArr[intArrayRandomNumber4]);
+
+            randomNumberForLanguage = random.nextInt(2); // 0 for english 1 for german
+            if (randomNumberForLanguage == 0) {
+                chosenWordEnglish = actualMap.get("English");
+                chosenWordGerman = actualMap.get("German");
+                tv1.setText(chosenWordEnglish);
+                word1.setText(randomMap1.get("German"));
+                word2.setText(randomMap2.get("German"));
+                word3.setText(randomMap3.get("German"));
+                word4.setText(randomMap4.get("German"));
+            } else if (randomNumberForLanguage == 1) {
+                chosenWordEnglish = actualMap.get("English");
+                chosenWordGerman = actualMap.get("German");
+                tv1.setText(chosenWordGerman);
+                word1.setText(randomMap1.get("English"));
+                word2.setText(randomMap2.get("English"));
+                word3.setText(randomMap3.get("English"));
+                word4.setText(randomMap4.get("English"));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void showTheRightChoice(TextView arr[], String chosenWordGerman, String chosenWordEnglish) {
+        if (arr[0].getText().equals(chosenWordEnglish) || arr[0].getText().equals(chosenWordGerman)) {
+            arr[0].setTextColor(Color.argb(255, 153, 255, 51));
+        } else if (arr[1].getText().equals(chosenWordEnglish) || arr[1].getText().equals(chosenWordGerman)) {
+            arr[1].setTextColor(Color.argb(255, 153, 255, 51));
+        } else if (arr[2].getText().equals(chosenWordEnglish) || arr[2].getText().equals(chosenWordGerman)) {
+            arr[2].setTextColor(Color.argb(255, 153, 255, 51));
+        } else if (arr[3].getText().equals(chosenWordEnglish) || arr[3].getText().equals(chosenWordGerman)) {
+            arr[3].setTextColor(Color.argb(255, 153, 255, 51));
+        }
     }
 }

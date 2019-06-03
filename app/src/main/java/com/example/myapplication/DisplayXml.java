@@ -47,7 +47,8 @@ public class DisplayXml extends Activity {
         //-----------------------------
 
         try {
-            File file = new File(this.getFilesDir().getAbsolutePath() + "/dictionary.xml");
+            //File file = new File(this.getFilesDir().getAbsolutePath() + "/dictionary.xml");
+            File file = new File("dictionary.xml");
             Date lastModDate = new Date(file.lastModified());
             InputStream is = getAssets().open("dictionary.xml");
 
@@ -77,8 +78,8 @@ public class DisplayXml extends Activity {
 
             //-----------------------------
             for(int j=0; j < listLength; j++) {
-                arrListDeneme1.add(arrListDeneme.get(j).get("German") + " -- " + arrListDeneme.get(j).get("English") + " -- "
-                        + arrListDeneme1.add(arrListDeneme.get(j).get("Turkish")));
+                arrListDeneme1.add(arrListDeneme.get(j).get("German") + " -- " + arrListDeneme.get(j).get("English") /*+ " -- "
+                        + arrListDeneme1.add(arrListDeneme.get(j).get("Turkish"))*/);
             }
             //-----------------------------
 
