@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         try {
-            if (!isConnected()) {
+            if (isConnected()) {
                 try {
                     SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy");
                     Date currentDate = new Date();
@@ -130,7 +130,7 @@ public class MainActivity extends Activity {
 
                 //randomWord(findViewById(R.id.button2));
                 engine(findViewById(R.id.button2));
-            } else if (true) {
+            } else {
                 AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
 
                 alertDialog.setMessage("Network Error. Local database will be used");
